@@ -1,2 +1,1 @@
-# Knowledge Graph Compression Using Graph Transformers
-
+# Efficient Common Sense in LLMs via Knowledge Graph Compression
