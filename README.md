@@ -42,3 +42,14 @@ python ground_concepts_simple.py $DATA
 python find_neighbours.py $DATA
 python filter_triple.py $DATA
 ```
+
+
+## Reference
+
+EunJeong Hwang, Veronika Thost, Vered Shwartz, and Tengfei Ma. 2023. [Knowledge Graph Compression Enhances Diverse Commonsense Generation](https://aclanthology.org/2023.emnlp-main.37.pdf). In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing, pages 558–572, Singapore. Association for Computational Linguistics.
+
+## Acknowledgements
+
+Many thanks to the Github repository of EMNLP 2023 paper "[Knowledge Graph Compression Enhances Diverse Commonsense Generation](https://aclanthology.org/2023.emnlp-main.37.pdf)" ([implementation](https://github.com/eujhwang/KG-Compression)) and the paper it was based on: ACL 2022 paper "[Diversifying Content Generation for Commonsense Reasoning with Mixture of Knowledge Graph Experts](https://arxiv.org/abs/2203.07285)" 
+
+Our codes are modified based on their codes.
