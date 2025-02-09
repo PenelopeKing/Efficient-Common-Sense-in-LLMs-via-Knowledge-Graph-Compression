@@ -1,1 +1,7 @@
 .DS_Store
+data/
+basic_finetuned_out/
+KG_finetuned_out/
+KG_finetuned_out2/
+conceptnet_embeddings.pt
+
