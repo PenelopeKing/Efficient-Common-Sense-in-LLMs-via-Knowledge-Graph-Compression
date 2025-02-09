@@ -9,13 +9,17 @@ The following data retrieval and preprocessing steps are based on the original i
 ## Create an environment
 
 ```
-transformers==3.3.1
-torch==1.7.0
-nltk==3.4.5
-networkx==2.1
-spacy==2.2.1
-torch-scatter==2.0.5+${CUDA}
+nltk==3.9.1
+spacy==3.8.4
+torch_scatter==2.1.2+${CUDA}
 psutil==5.9.0
+bert_score==0.3.13
+datasets==3.2.0
+networkx==3.2.1
+pandas==2.2.3
+torch==2.5.1+${CUDA}
+tqdm==4.67.1
+transformers==4.48.1
 ```
 
 -- For `torch-scatter`, `${CUDA}` should be replaced by either `cu101` `cu102` `cu110` or `cu111` depending on your PyTorch installation.
@@ -43,6 +47,7 @@ python find_neighbours.py $DATA
 python filter_triple.py $DATA
 ```
 
+Replace relation.txt with our own relation.txt in this repo. It is modified from the original processing. 
 
 ## Reference
 
