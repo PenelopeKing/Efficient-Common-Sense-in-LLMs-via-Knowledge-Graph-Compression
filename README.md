@@ -47,7 +47,15 @@ python find_neighbours.py $DATA
 python filter_triple.py $DATA
 ```
 
-Replace relation.txt with our own relation.txt in this repo. It is modified from the original processing. 
+Replace **relation.txt** with our own relation.txt in this repo. It is modified from the original processing. 
+
+## Graph Encoding
+To get the R-GCN encodings, from the project root dir, run <code> python run.py encoding </code>. This applies a graph encoder to subgraphs create meaningful node embeddings.  
+
+## Run Models
+To run our basic model (with no knowledge graph) run <code> python run.py no_KG </code>. 
+To run our uncompressed full subgraph model run <code> python run.py full_KG </code>. 
+To run our compressed subgraph model run <code> python run.py compressed_KG </code>. 
 
 ## Reference
 
