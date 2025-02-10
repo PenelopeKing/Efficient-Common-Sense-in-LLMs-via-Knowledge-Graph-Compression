@@ -50,13 +50,21 @@ python filter_triple.py $DATA
 Replace **relation.txt** with our own relation.txt in this repo. It is modified from the original processing. 
 
 ## Graph Encoding
-To get the R-GCN encodings, from the project root dir, run <code> python run.py encoding </code>. This applies a graph encoder to subgraphs create meaningful node embeddings.  
+To get the R-GCN encodings, from the project root dir, run:
+```python run.py encoding </code>```
+This applies a graph encoder to subgraphs create meaningful node embeddings. This is a necessary step for models below that use the knowledge graph. 
 
 ## Run Models
-To run our basic model (with no knowledge graph) run <code> python run.py no_KG </code>. 
-To run our uncompressed full subgraph model run <code> python run.py full_KG </code>. 
-To run our compressed subgraph model run <code> python run.py compressed_KG </code>. 
+```
+# To run our basic model (with no knowledge graph) run:
+python run.py no_KG
+ 
+# To run our uncompressed full subgraph model run:
+python run.py full_KG
 
+#To run our compressed subgraph model run:
+python run.py compressed_KG 
+```
 ## Reference
 
 EunJeong Hwang, Veronika Thost, Vered Shwartz, and Tengfei Ma. 2023. [Knowledge Graph Compression Enhances Diverse Commonsense Generation](https://aclanthology.org/2023.emnlp-main.37.pdf). In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing, pages 558–572, Singapore. Association for Computational Linguistics.
