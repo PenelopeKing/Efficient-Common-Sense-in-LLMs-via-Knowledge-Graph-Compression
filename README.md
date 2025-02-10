@@ -54,7 +54,7 @@ To get the R-GCN encodings, from the project root dir, run:
 ```
 python run.py encoding 
 ```
-This applies a graph encoder to subgraphs create meaningful node embeddings. This is a necessary step for models below that use the knowledge graph. 
+This applies a graph encoder to subgraphs, creating meaningful node embeddings. This step is essential for the models below that utilize the knowledge graph.
 
 ## Run Models
 ```
@@ -67,7 +67,7 @@ python run.py full_KG
 # To run our compressed subgraph model run:
 python run.py compressed_KG 
 ```
-Note: Training will take a while and models will save when ran for the first time. Each model will allow you to input test sentences and view the explanations. 
+Note: Training may take some time, but models will be saved after the first run. Once trained, each model will allow you to input test sentences and and view the explanations. Ex. <code> input_sentence = "I can count the stars" <\code> will result in: 'Stars cannot be counted.', 'Stars are too big to count.', 'Stars cannot be counted by humans.' with the uncompressed subgraph model. 
 
 ## Reference
 
