@@ -67,7 +67,8 @@ python run.py full_KG
 # To run our compressed subgraph model run:
 python run.py compressed_KG 
 ```
-Note: Training may take some time, but models will be saved after the first run. Once trained, each model will allow you to input test sentences and and view the explanations. Ex. <code> input_sentence = "I can count the stars" </code> will result in: 'Stars cannot be counted.', 'Stars are too big to count.', 'Stars cannot be counted by humans.' with the uncompressed subgraph model. 
+Note: Training may take some time, but models will be saved after the first run. Once trained, each model will allow you to input test sentences and and view the explanations. Ex. <code>input_sentence = "I can count the stars"</code> will result in: 'Stars cannot be counted.', 'Stars are too big to count.', 'Stars cannot be counted by humans.' with the uncompressed subgraph model. 
+Note #2: Our last model is still a work in progress. 
 
 ## Reference
 
