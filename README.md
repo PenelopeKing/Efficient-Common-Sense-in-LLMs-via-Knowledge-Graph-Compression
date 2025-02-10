@@ -67,6 +67,8 @@ python run.py full_KG
 # To run our compressed subgraph model run:
 python run.py compressed_KG 
 ```
+Note: Training will take a while and models will save when ran for the first time. Each model will allow you to input test sentences and view the explanations. 
+
 ## Reference
 
 EunJeong Hwang, Veronika Thost, Vered Shwartz, and Tengfei Ma. 2023. [Knowledge Graph Compression Enhances Diverse Commonsense Generation](https://aclanthology.org/2023.emnlp-main.37.pdf). In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing, pages 558–572, Singapore. Association for Computational Linguistics.
