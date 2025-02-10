@@ -51,7 +51,9 @@ Replace **relation.txt** with our own relation.txt in this repo. It is modified 
 
 ## Graph Encoding
 To get the R-GCN encodings, from the project root dir, run:
-```python run.py encoding </code>```
+```
+python run.py encoding 
+```
 This applies a graph encoder to subgraphs create meaningful node embeddings. This is a necessary step for models below that use the knowledge graph. 
 
 ## Run Models
@@ -62,7 +64,7 @@ python run.py no_KG
 # To run our uncompressed full subgraph model run:
 python run.py full_KG
 
-#To run our compressed subgraph model run:
+# To run our compressed subgraph model run:
 python run.py compressed_KG 
 ```
 ## Reference
