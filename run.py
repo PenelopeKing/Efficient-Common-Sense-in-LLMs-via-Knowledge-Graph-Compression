@@ -22,10 +22,6 @@ import random
 import torch.optim as optim
 
 
-# Load model parameters from data-params.json
-with open('data-params.json') as f:
-    data_params = json.load(f)
-
 def run_encoding():
      
     cpnet_path = "data/cpnet.graph"
