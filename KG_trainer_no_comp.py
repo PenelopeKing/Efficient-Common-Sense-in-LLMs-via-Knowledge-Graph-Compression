@@ -1,8 +1,6 @@
 import os
-import random
 import torch
 import torch.nn as nn
-import pickle
 from transformers import (
     BartForConditionalGeneration,
     BartTokenizer,
@@ -54,7 +52,7 @@ def get_graph_info(text):
         concept_ids = concept_ids + [0] * (fixed_length - len(concept_ids))
     else:
         concept_ids = concept_ids[:fixed_length]
-    # Convert to tensor immediately so that the cached dataset contains tensors
+    # Convert to tensor immediately so that the cached dataset contains tensors.
     return {"concept_ids": torch.tensor(concept_ids, dtype=torch.long)}
 
 
@@ -81,9 +79,6 @@ class GraphEncoder(nn.Module):
             pooled: A pooled representation of shape (batch_size, 1, hidden_size)
             embedded: All concept embeddings of shape (batch_size, num_concepts_per_example, hidden_size)
         """
-        # If not already a tensor, convert it (this should rarely happen if cached properly)
-        if not isinstance(concept_ids, torch.Tensor):
-            concept_ids = torch.tensor(concept_ids, dtype=torch.long, device=self.embedding.weight.device)
         embedded = self.embedding(concept_ids)  # shape: (batch_size, num_concepts, hidden_size)
         pooled = embedded.mean(dim=1, keepdim=True)  # simple mean pooling
         return pooled, embedded
@@ -115,10 +110,10 @@ class BartGraphAwareForConditionalGeneration(BartForConditionalGeneration):
         kwargs.pop("num_items_in_batch", None)
 
         if concept_ids is not None:
-            # Ensure concept_ids is a tensor and on the same device as input_ids.
-            if not isinstance(concept_ids, torch.Tensor):
+            # Ensure concept_ids is on the same device as input_ids.
+            if not torch.is_tensor(concept_ids):
                 concept_ids = torch.tensor(concept_ids, dtype=torch.long, device=input_ids.device)
-            pooled_graph, graph_hidden = self.graph_encoder(concept_ids)
+            pooled_graph, _ = self.graph_encoder(concept_ids)
             # Transform the pooled representation.
             graph_features = self.graph_fusion_layer(pooled_graph)  # shape: (batch_size, 1, d_model)
         else:
@@ -134,13 +129,13 @@ class BartGraphAwareForConditionalGeneration(BartForConditionalGeneration):
         lm_loss = outputs.loss
         lm_logits = outputs.logits
 
-        # TODO look into auxillary loss more
+        # Optionally add an auxiliary loss from the graph features.
         if (labels is not None) and (lm_loss is not None) and (graph_features is not None):
             dummy_target = torch.zeros_like(graph_features)
             aux_loss = ((graph_features - dummy_target) ** 2).mean()
             total_loss = lm_loss + 0.1 * aux_loss
         else:
-            total_loss = lm_loss  # When labels is None (e.g., during generation), lm_loss is None.
+            total_loss = lm_loss  # When labels is None (e.g., during generation).
 
         return Seq2SeqLMOutput(
             loss=total_loss,
@@ -156,22 +151,22 @@ class BartGraphAwareForConditionalGeneration(BartForConditionalGeneration):
 
 
 # -----------------------------------------------------------
-# Custom Data Collator for Graph Fields
+# Custom Data Collator for Graph Fields (Vectorized and Robust)
 # -----------------------------------------------------------
 class GraphAwareDataCollator(DataCollatorForSeq2Seq):
     def __call__(self, features):
         # Use the parent collator to batch standard fields (e.g., input_ids, labels)
         batch = super().__call__(features)
         if "concept_ids" in features[0]:
+            # Ensure each concept_ids is a tensor.
             concept_ids_list = []
             for f in features:
-                concept_ids_value = f["concept_ids"]
-                # If already a tensor, simply move it to the same device as input_ids.
-                if isinstance(concept_ids_value, torch.Tensor):
-                    concept_ids_list.append(concept_ids_value.to(batch["input_ids"].device))
-                else:
-                    concept_ids_list.append(torch.tensor(concept_ids_value, dtype=torch.long, device=batch["input_ids"].device))
-            batch["concept_ids"] = torch.stack(concept_ids_list)
+                cid = f["concept_ids"]
+                if not torch.is_tensor(cid):
+                    cid = torch.tensor(cid, dtype=torch.long)
+                concept_ids_list.append(cid)
+            # Stack and perform a single device transfer.
+            batch["concept_ids"] = torch.stack(concept_ids_list).to(batch["input_ids"].device)
         return batch
 
 
@@ -196,8 +191,8 @@ def get_KG_trainer(
     preprocessed_path = os.path.join(output_dir, "preprocessed_dataset")
 
     with open(source_path, "r", encoding="utf-8") as f_src, open(target_path, "r", encoding="utf-8") as f_tgt:
-        sources = [line.strip() for line in f_src]
-        targets = [line.strip() for line in f_tgt]
+        sources = [line.strip() for line in f_src][:1000]
+        targets = [line.strip() for line in f_tgt][:1000]
     raw_data = [{"source": s, "target": t} for s, t in zip(sources, targets)]
     
     if os.path.exists(preprocessed_path):
@@ -208,14 +203,14 @@ def get_KG_trainer(
         train_dataset = Dataset.from_list(raw_data)
         tokenizer = BartTokenizer.from_pretrained(model_name)
         
-        def preprocess_function(examples):
-            model_inputs = tokenizer(examples["source"], max_length=max_len, truncation=True)
+        def preprocess_function(example):
+            # Process one example at a time.
+            model_inputs = tokenizer(example["source"], max_length=max_len, truncation=True)
             with tokenizer.as_target_tokenizer():
-                labels = tokenizer(examples["target"], max_length=max_len, truncation=True)
+                labels = tokenizer(example["target"], max_length=max_len, truncation=True)
             model_inputs["labels"] = labels["input_ids"]
-            # Compute and immediately convert graph info to a tensor.
-            graph_info = get_graph_info(examples["source"])
-            model_inputs.update(graph_info)
+            # Compute and add graph info (concept_ids are precomputed as tensors)
+            model_inputs.update(get_graph_info(example["source"]))
             return model_inputs
         
         train_dataset = train_dataset.map(preprocess_function, batched=False, desc="Preprocessing data")
@@ -239,6 +234,7 @@ def get_KG_trainer(
         save_total_limit=3,
         logging_steps=100,
         eval_strategy="no",
+        fp16=True
     )
     
     trainer = Trainer(

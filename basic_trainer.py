@@ -36,8 +36,8 @@ def get_basic_trainer(
     # Load raw data lines
     # ---------------------
     with open(source_path, "r", encoding="utf-8") as f_src, open(target_path, "r", encoding="utf-8") as f_tgt:
-        sources = [line.strip() for line in f_src]
-        targets = [line.strip() for line in f_tgt]
+        sources = [line.strip() for line in f_src][:1000]
+        targets = [line.strip() for line in f_tgt][:1000]
 
     # ---------------------
     # Build HF Dataset
@@ -86,6 +86,7 @@ def get_basic_trainer(
         save_total_limit=3,
         logging_steps=100,
         eval_strategy="no",  # Change to "steps" or "epoch" if you have a val set
+        fp16=True
     )
 
     # ---------------------
