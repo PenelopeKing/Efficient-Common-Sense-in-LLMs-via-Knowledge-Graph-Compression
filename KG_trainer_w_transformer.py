@@ -182,7 +182,7 @@ class BartGraphAwareForConditionalGeneration(BartForConditionalGeneration):
             num_concepts=len(concept2id),
             num_layers=2,
             num_relations=len(relation2id),
-            compress_ratio=0.5,
+            compress_ratio=0.2,
             nhead=8
         )
         self.graph_fusion_layer = nn.Linear(config.d_model, config.d_model)

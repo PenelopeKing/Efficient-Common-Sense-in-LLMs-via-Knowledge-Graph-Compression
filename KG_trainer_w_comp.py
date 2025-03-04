@@ -411,18 +411,21 @@ def get_KG_trainer(
     max_len: int = 128,
     epochs: int = 3,
     train_batch_size: int = 60,
+    num_points: int = 200,
 ):
     os.makedirs(output_dir, exist_ok=True)
     preprocessed_path = os.path.join(output_dir, "preprocessed_dataset")
 
+    # Read and limit to num_points datapoints.
     with open(source_path, "r", encoding="utf-8") as f_src, open(target_path, "r", encoding="utf-8") as f_tgt:
-        sources = [line.strip() for line in f_src]
-        targets = [line.strip() for line in f_tgt]
+        sources = [line.strip() for line in f_src][:num_points]
+        targets = [line.strip() for line in f_tgt][:num_points]
     raw_data = [{"source": s, "target": t} for s, t in zip(sources, targets)]
 
+    # Load preprocessed dataset if available; otherwise, preprocess the raw_data.
     if os.path.exists(preprocessed_path):
         print("Loading preprocessed dataset from disk...")
-        train_dataset = load_from_disk(preprocessed_path)
+        train_dataset = load_from_disk(preprocessed_path).select(range(num_points))
     else:
         print("Preprocessing dataset...")
         train_dataset = Dataset.from_list(raw_data)
@@ -455,9 +458,9 @@ def get_KG_trainer(
         overwrite_output_dir=True,
         num_train_epochs=epochs,
         per_device_train_batch_size=train_batch_size,
-        save_steps=15,
+        save_steps=10000,
         save_total_limit=3,
-        logging_steps=15,
+        logging_steps=5,
         eval_strategy="no",
     )
 

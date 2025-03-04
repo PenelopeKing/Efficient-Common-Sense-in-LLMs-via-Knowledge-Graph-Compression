@@ -18,7 +18,7 @@ from KG_utils import (
     load_total_concepts,
     get_subgraph_for_message,
     concept2id,
-    id2concept,  # Make sure id2concept is provided by your KG_utils
+    id2concept,
 )
 
 # Initialize KG resources.
@@ -36,7 +36,7 @@ def get_graph_text(text):
       - Computing a subgraph using BFS.
       - Extracting all concept IDs available.
       - Converting each concept ID into text using id2concept.
-      - Joining the concept texts with a special separator.
+      - Joining the concept texts with a space.
     
     Returns:
         A string containing the KG information.
@@ -50,8 +50,8 @@ def get_graph_text(text):
     concepts = [id2concept.get(cid, "") for cid in concept_ids]
     # Filter out any empty strings.
     concepts = [c for c in concepts if c]
-    # Join using a special separator (change "<KG>" to your desired token).
-    graph_text = " <KG> ".join(concepts)
+    # Join using a space between items.
+    graph_text = " ".join(concepts)
     return graph_text
 
 
@@ -63,37 +63,29 @@ def get_KG_trainer(
     target_path: str,
     model_name: str = "facebook/bart-base",
     output_dir: str = "KG_finetuned_out",
-    max_len: int = 128,
+    max_len: int = 1024,
     epochs: int = 3,
-    train_batch_size: int = 60
+    train_batch_size: int = 60,
+    num_points: int = 200,  # New parameter for datapoints count.
 ):
-    """
-    Returns a Hugging Face Trainer instance for fine-tuning BART where
-    KG-derived text (obtained from id2concept) is injected into the source prompt.
-    
-    The KG text is appended to the original prompt using a special separator.
-    """
     os.makedirs(output_dir, exist_ok=True)
     preprocessed_path = os.path.join(output_dir, "preprocessed_dataset")
 
-    # Load raw data from source and target files.
     with open(source_path, "r", encoding="utf-8") as f_src, open(target_path, "r", encoding="utf-8") as f_tgt:
-        sources = [line.strip() for line in f_src]
-        targets = [line.strip() for line in f_tgt]
+        sources = [line.strip() for line in f_src][:num_points]
+        targets = [line.strip() for line in f_tgt][:num_points]
     raw_data = [{"source": s, "target": t} for s, t in zip(sources, targets)]
     
     if os.path.exists(preprocessed_path):
         print("Loading preprocessed dataset from disk...")
-        train_dataset = load_from_disk(preprocessed_path)
+        train_dataset = load_from_disk(preprocessed_path).select(range(num_points))
     else:
         print("Preprocessing dataset...")
         train_dataset = Dataset.from_list(raw_data)
         tokenizer = BartTokenizer.from_pretrained(model_name)
         
         def preprocess_function(example):
-            # Get the KG-derived text from all available concepts.
             graph_text = get_graph_text(example["source"])
-            # Inject the KG text into the prompt.
             new_source = example["source"] + " <KG> " + graph_text if graph_text else example["source"]
             model_inputs = tokenizer(new_source, max_length=max_len, truncation=True)
             with tokenizer.as_target_tokenizer():
@@ -106,13 +98,9 @@ def get_KG_trainer(
         train_dataset.save_to_disk(preprocessed_path)
 
     tokenizer = BartTokenizer.from_pretrained(model_name)
-    # Use the standard BART model.
     model = BartForConditionalGeneration.from_pretrained(model_name)
-    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
-    
-    # Use the standard DataCollator for Seq2Seq.
     data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
     
     training_args = TrainingArguments(
@@ -120,12 +108,15 @@ def get_KG_trainer(
         overwrite_output_dir=True,
         num_train_epochs=epochs,
         per_device_train_batch_size=train_batch_size,
-        save_steps=500,
+        save_steps=10000,
         save_total_limit=3,
-        logging_steps=100,
+        logging_steps=500,
         eval_strategy="no",
         fp16=True
     )
+
+    sample = train_dataset[0]
+    print("Decoded input:", tokenizer.decode(sample['input_ids']))
     
     trainer = Trainer(
         model=model,
@@ -135,3 +126,26 @@ def get_KG_trainer(
         data_collator=data_collator,
     )
     return trainer
+
+def generate_explanation_no_comp(model, tokenizer, device, sentence: str) -> list:
+    # Inject KG-derived text into the input sentence.
+    graph_text = get_graph_text(sentence)
+    if graph_text:
+        sentence = sentence + " <KG> " + graph_text
+
+    # Tokenize the modified input text
+    inputs = tokenizer(sentence, return_tensors="pt").to(device)
+    
+    # Generate output using beam search:
+    output_ids = model.generate(
+        **inputs,
+        max_length=60,
+        num_beams=3,
+        num_return_sequences=3,
+        early_stopping=True
+    )
+    
+    # Decode each of the generated token sequences
+    explanations = [tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
+    return explanations
+
