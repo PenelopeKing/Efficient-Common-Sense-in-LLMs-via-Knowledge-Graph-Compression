@@ -72,17 +72,22 @@ def get_graph_info(text):
         edge_type = torch.zeros((0,), dtype=torch.long)
     return {"concept_ids": concept_ids, "edge_index": edge_index, "edge_type": edge_type}
 
+
 # -----------------------------------------------------------
 # Batched RGCN Layer using torch_geometric's RGCNConv
 # -----------------------------------------------------------
 class GraphConvolutionalLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, num_relations):
+    def __init__(self, in_channels, out_channels, num_relations, dropout=0.4):
         super(GraphConvolutionalLayer, self).__init__()
         self.rgcn = RGCNConv(in_channels, out_channels, num_relations)
+        self.dropout = nn.Dropout(dropout)
     
     def forward(self, node_features, edge_index, edge_type):
         out = self.rgcn(node_features, edge_index, edge_type)
-        return F.relu(out)
+        out = F.relu(out)
+        out = self.dropout(out)  # apply dropout after activation
+        return out
+
 
 # -----------------------------------------------------------
 # Helper: Batched RGCN Forward
@@ -95,116 +100,109 @@ def batch_rgcn(rgcn_layer, node_features_batch, edge_index_batch, edge_type_batc
     """
     B, N, C = node_features_batch.shape
 
-    # Make contiguous before reshaping.
+    # Reshape (B, N, C) -> (B*N, C)
     x = node_features_batch.contiguous().view(B * N, C)
 
     edge_index_list = []
     edge_type_list = []
     for i in range(B):
-        ei = edge_index_batch[i]
+        ei = edge_index_batch[i]  # shape (2, E)
+        # offset node indices by i*N
         ei = ei + i * N
         edge_index_list.append(ei)
         edge_type_list.append(edge_type_batch[i])
-    edge_index_combined = torch.cat(edge_index_list, dim=1)  # (2, total_edges)
-    edge_type_combined = torch.cat(edge_type_list, dim=0)    # (total_edges,)
+    edge_index_combined = torch.cat(edge_index_list, dim=1)  # (2, total_E)
+    edge_type_combined = torch.cat(edge_type_list, dim=0)    # (total_E)
 
     out = rgcn_layer(x, edge_index_combined, edge_type_combined)
-    out = out.view(B, N, -1)  # (B, N, out_channels)
+    # Reshape back to (B, N, out_channels)
+    out = out.view(B, N, -1)
     return out
+
 
 # -----------------------------------------------------------
 # Batched Graph Scoring Layer
 # -----------------------------------------------------------
 class GraphScoringLayer(nn.Module):
-    def __init__(self, in_channels, num_relations):
+    def __init__(self, in_channels, num_relations, dropout=0.4):
         super(GraphScoringLayer, self).__init__()
-        self.gcn = GraphConvolutionalLayer(in_channels, in_channels, num_relations)
+        self.gcn = GraphConvolutionalLayer(in_channels, in_channels, num_relations, dropout=dropout)
         self.linear = nn.Linear(in_channels, 1)
     
     def forward(self, node_features, edge_index, edge_type):
         updated = batch_rgcn(self.gcn, node_features, edge_index, edge_type)
-        scores = self.linear(updated).squeeze(-1)
+        scores = self.linear(updated).squeeze(-1)  # (B, N)
         return scores
+
 
 # -----------------------------------------------------------
 # Learned SAG Pooling Module (Batched Vectorized Version)
 # -----------------------------------------------------------
 class LearnedSAGPooling(nn.Module):
-    def __init__(self, in_channels, compress_ratio=0.5, num_relations=None):
+    def __init__(self, in_channels, compress_ratio=0.5, num_relations=None, dropout=0.4):
         super(LearnedSAGPooling, self).__init__()
         self.compress_ratio = compress_ratio
-        self.scoring = GraphScoringLayer(in_channels, num_relations)
+        self.scoring = GraphScoringLayer(in_channels, num_relations, dropout=dropout)
         self.attn = nn.Linear(in_channels, 1)
-    
+        self.dropout = nn.Dropout(dropout)
+
     def forward(self, node_features, edge_index, edge_type):
+        """
+        node_features: (B, N, C)
+        Returns:
+          pooled: (B, 1, C)
+          x_top: (B, k, C)  [unused at the end, but we get it]
+          topk_indices: (B, k)
+        """
         B, N, C = node_features.size()
         scores = self.scoring(node_features, edge_index, edge_type)  # (B, N)
         k = max(1, int(N * self.compress_ratio))
-        _, topk_indices = torch.topk(scores, k, dim=1)
+        _, topk_indices = torch.topk(scores, k, dim=1)  # (B, k)
         topk_indices_expanded = topk_indices.unsqueeze(-1).expand(-1, -1, C)  # (B, k, C)
-        x_top = torch.gather(node_features, 1, topk_indices_expanded)         # (B, k, C)
-        attn_scores = self.attn(x_top).squeeze(-1)                           # (B, k)
-        attn_weights = F.softmax(attn_scores, dim=1).unsqueeze(-1)           # (B, k, 1)
-        pooled = torch.sum(x_top * attn_weights, dim=1, keepdim=True)        # (B, 1, C)
+        x_top = torch.gather(node_features, 1, topk_indices_expanded)  # (B, k, C)
+        x_top = self.dropout(x_top)  # apply dropout on the selected features
+        attn_scores = self.attn(x_top).squeeze(-1)  # (B, k)
+        attn_weights = F.softmax(attn_scores, dim=1).unsqueeze(-1)  # (B, k, 1)
+        pooled = torch.sum(x_top * attn_weights, dim=1, keepdim=True)  # (B, 1, C)
         return pooled, x_top, topk_indices
 
+
 # -----------------------------------------------------------
-# Graph Encoder with 1 RGCN -> 1 Transformer -> 1 RGCN -> 1 Transformer -> SAG
+# Graph Encoder with Global Transformer and Dropout
 # -----------------------------------------------------------
 class GraphEncoder(nn.Module):
-    def __init__(self, hidden_size, num_concepts, compress_ratio=0.5,
-                 num_relations=None, transformer_nhead=8, transformer_num_layers=1):
+    def __init__(self, hidden_size, num_concepts, compress_ratio=0.5, num_global_layers=1, nhead=8, dropout=0.4):
         super(GraphEncoder, self).__init__()
-        if num_relations is None:
-            num_relations = len(relation2id)
-
         self.embedding = nn.Embedding(num_concepts, hidden_size)
+        num_relations = len(relation2id)
+        self.gcn = GraphConvolutionalLayer(hidden_size, hidden_size, num_relations, dropout=dropout)
+        self.dropout = nn.Dropout(dropout)
 
-        # RGCN layer 1
-        self.rgcn1 = GraphConvolutionalLayer(hidden_size, hidden_size, num_relations)
-        # Transformer layer 1
-        encoder_layer1 = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=transformer_nhead)
-        self.transformer1 = nn.TransformerEncoder(encoder_layer1, num_layers=transformer_num_layers)
+        # global transformer with dropout set to 0.4
+        enc_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=nhead, dropout=dropout)
+        self.global_transform = nn.TransformerEncoder(enc_layer, num_layers=num_global_layers)
 
-        # RGCN layer 2
-        self.rgcn2 = GraphConvolutionalLayer(hidden_size, hidden_size, num_relations)
-        # Transformer layer 2
-        encoder_layer2 = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=transformer_nhead)
-        self.transformer2 = nn.TransformerEncoder(encoder_layer2, num_layers=transformer_num_layers)
+        self.sag_pool = LearnedSAGPooling(hidden_size, compress_ratio=compress_ratio, num_relations=num_relations, dropout=dropout)
 
-        self.sag_pool = LearnedSAGPooling(hidden_size, compress_ratio=compress_ratio, num_relations=num_relations)
-    
     def forward(self, concept_ids, edge_index, edge_type):
-        # (B, N)
+        # local RGCN
         x = self.embedding(concept_ids)  # (B, N, hidden_size)
+        local_nodes = batch_rgcn(self.gcn, x, edge_index, edge_type)  # (B, N, hidden_size)
+        local_nodes = self.dropout(local_nodes)  # dropout after GCN
 
-        # RGCN layer 1 + residual
-        x0 = x
-        x1_local = batch_rgcn(self.rgcn1, x0, edge_index, edge_type)  # (B, N, hidden_size)
-        x1 = x1_local + x0  # residual
+        # global transformer: expects shape (N, B, hidden_size)
+        local_nodes_t = local_nodes.permute(1, 0, 2).contiguous()  # (N, B, hidden_size)
+        global_nodes_t = self.global_transform(local_nodes_t)       # (N, B, hidden_size)
+        global_nodes = global_nodes_t.permute(1, 0, 2).contiguous()   # (B, N, hidden_size)
+        global_nodes = self.dropout(global_nodes)  # dropout after transformer
 
-        # Transformer layer 1 + residual
-        # Transformer expects shape (N, B, hidden_size)
-        x1_t = x1.permute(1, 0, 2).contiguous()   # (N, B, hidden_size)
-        x1_global = self.transformer1(x1_t)       # (N, B, hidden_size)
-        x1_global = x1_global.permute(1, 0, 2).contiguous()  # (B, N, hidden_size)
-        x2 = x1_global + x1  # residual
+        pooled, _, topk_indices = self.sag_pool(global_nodes, edge_index, edge_type)
+        # topk_indices: (B, k), concept_ids: (B, N)
 
-        # RGCN layer 2 + residual
-        x2_local = batch_rgcn(self.rgcn2, x2, edge_index, edge_type)  # (B, N, hidden_size)
-        x3 = x2_local + x2
-
-        # Transformer layer 2 + residual
-        x3_t = x3.permute(1, 0, 2).contiguous()   # (N, B, hidden_size)
-        x3_global = self.transformer2(x3_t)       # (N, B, hidden_size)
-        x3_global = x3_global.permute(1, 0, 2).contiguous()  # (B, N, hidden_size)
-        x4 = x3_global + x3
-
-        # SAG pooling
-        pooled, _, topk_indices = self.sag_pool(x4, edge_index, edge_type)
         concept_ids_exp = concept_ids.unsqueeze(-1)  # (B, N, 1)
-        topk_concept_ids = torch.gather(concept_ids_exp, 1, topk_indices.unsqueeze(-1)).squeeze(-1)
+        topk_concept_ids = torch.gather(concept_ids_exp, 1, topk_indices.unsqueeze(-1)).squeeze(-1)  # (B, k)
         return pooled, topk_concept_ids
+
 
 # -----------------------------------------------------------
 # Custom Graph-Aware BART Model (Insert Concepts as Text after <KG>)
@@ -215,14 +213,14 @@ class BartGraphAwareForConditionalGeneration(BartForConditionalGeneration):
         self.graph_encoder = GraphEncoder(
             hidden_size=config.d_model,
             num_concepts=len(concept2id),
-            compress_ratio=0.2,
-            num_relations=len(relation2id),
-            transformer_nhead=8,
-            transformer_num_layers=1,
+            compress_ratio=0.3,
+            num_global_layers=1,
+            nhead=4,
+            dropout=0.4,
         )
         self.tokenizer = tokenizer
         self.post_init()
-    
+
     def forward(
         self,
         input_ids=None,
@@ -245,6 +243,7 @@ class BartGraphAwareForConditionalGeneration(BartForConditionalGeneration):
                 **kwargs,
             )
 
+        # If we have graph info
         if (concept_ids is not None) and (edge_index is not None) and (edge_type is not None):
             if not isinstance(concept_ids, torch.Tensor):
                 concept_ids = torch.tensor(concept_ids, dtype=torch.long, device=device)
@@ -260,7 +259,6 @@ class BartGraphAwareForConditionalGeneration(BartForConditionalGeneration):
             if edge_type.dim() == 1:
                 edge_type = edge_type.unsqueeze(0)
 
-            # run the extended graph encoder
             _, topk_concept_ids = self.graph_encoder(concept_ids, edge_index, edge_type)
 
             # convert top-k concept IDs to text
@@ -273,11 +271,11 @@ class BartGraphAwareForConditionalGeneration(BartForConditionalGeneration):
             concept_tokenized = self.tokenizer(concept_texts, return_tensors="pt", padding=True, truncation=False)
             concept_tokenized = {k: v.to(device) for k, v in concept_tokenized.items()}
 
-            # embed the concept text
             graph_token_embeds = self.model.encoder.embed_tokens(concept_tokenized["input_ids"])
             text_token_embeds = self.model.encoder.embed_tokens(input_ids)
 
             B, k_len, _ = graph_token_embeds.size()
+
             graph_attention_mask = torch.ones((B, k_len), dtype=attention_mask.dtype, device=attention_mask.device)
 
             inputs_embeds = torch.cat([graph_token_embeds, text_token_embeds], dim=1)
@@ -299,7 +297,6 @@ class BartGraphAwareForConditionalGeneration(BartForConditionalGeneration):
             if labels is not None:
                 loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
                 loss = loss_fct(lm_logits.view(-1, self.config.vocab_size), labels.view(-1))
-
             return Seq2SeqLMOutput(
                 loss=loss,
                 logits=lm_logits,
@@ -318,6 +315,7 @@ class BartGraphAwareForConditionalGeneration(BartForConditionalGeneration):
                 labels=labels,
                 **kwargs,
             )
+
 
 # -----------------------------------------------------------
 # Data Collator Updated for New Graph Fields
@@ -373,6 +371,7 @@ class GraphAwareDataCollator(DataCollatorForSeq2Seq):
             batch["edge_type"] = torch.stack(padded_edge_type)
         return batch
 
+
 # -----------------------------------------------------------
 # KG-Aware Trainer Creation Function (with Dataset Caching)
 # -----------------------------------------------------------
@@ -425,9 +424,9 @@ def get_KG_transformer_trainer(
         num_train_epochs=epochs,
         per_device_train_batch_size=train_batch_size,
         fp16=True,
-        save_steps=10000,
-        save_total_limit=3,
-        logging_steps=10,
+        save_steps=5000,
+        save_total_limit=8,
+        logging_steps=500,
         eval_strategy="no",
     )
 

@@ -341,9 +341,9 @@ def get_KG_RGCN_trainer(
         num_train_epochs=epochs,
         per_device_train_batch_size=train_batch_size,
         fp16=True,
-        save_steps=10000,
+        save_steps=5000,
         save_total_limit=3,
-        logging_steps=50,
+        logging_steps=500,
         eval_strategy="no",
     )
     trainer = Trainer(

@@ -108,8 +108,8 @@ def get_KG_trainer(
         overwrite_output_dir=True,
         num_train_epochs=epochs,
         per_device_train_batch_size=train_batch_size,
-        save_steps=10000,
-        save_total_limit=3,
+        save_steps=5000,
+        save_total_limit=5,
         logging_steps=500,
         eval_strategy="no",
         fp16=True
@@ -134,7 +134,7 @@ def generate_explanation_no_comp(model, tokenizer, device, sentence: str) -> lis
         sentence = sentence + " <KG> " + graph_text
 
     # Tokenize the modified input text
-    inputs = tokenizer(sentence, return_tensors="pt").to(device)
+    inputs = tokenizer(sentence, return_tensors="pt", max_length=256, truncation=True).to(device)
     
     # Generate output using beam search:
     output_ids = model.generate(

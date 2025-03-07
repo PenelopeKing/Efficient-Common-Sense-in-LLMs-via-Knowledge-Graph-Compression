@@ -146,10 +146,10 @@ def get_basic_trainer(
         num_train_epochs=epochs,
         per_device_train_batch_size=train_batch_size,
         per_device_eval_batch_size=eval_batch_size,
-        save_steps=10000000000,
-        save_total_limit=1,
-        logging_steps=100,
-        evaluation_strategy=eval_strategy,
+        save_steps=5000,
+        save_total_limit=10,
+        logging_steps=500,
+        evaluation_strategy='no',
         fp16=True,
     )
     
