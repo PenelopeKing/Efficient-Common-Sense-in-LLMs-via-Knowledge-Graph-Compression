@@ -112,7 +112,7 @@ def get_KG_trainer(
         save_total_limit=5,
         logging_steps=500,
         eval_strategy="no",
-        fp16=True
+        fp16=False
     )
 
     sample = train_dataset[0]
