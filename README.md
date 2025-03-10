@@ -82,7 +82,7 @@ python run.py train <dataset> <model_type>
 Note: Training may take some time, but models will be saved after the first run. Once trained, we can evaluate the model. 
 
 ## Evaluating a Model
-To evaluate a trained model, make sure to change the parameter in `data-params.json` to use the specific checkpoint model and run:
+To evaluate a trained model, make sure to change the parameter `checkpoint` in `data-params.json` to use the specific checkpoint model. Note that if `num_points` is changed, make sure to change the `checkpoint` to match the model stored in the `output_dir`:
 ```
     python run.py evaluate <dataset> <model_type>
 ```
