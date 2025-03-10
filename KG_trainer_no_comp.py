@@ -1,17 +1,12 @@
 import os
-import random
 import torch
-import torch.nn as nn
-import pickle
 from transformers import (
     BartForConditionalGeneration,
     BartTokenizer,
-    BartConfig,
     TrainingArguments,
     Trainer,
     DataCollatorForSeq2Seq,
 )
-from transformers.modeling_outputs import Seq2SeqLMOutput
 from datasets import Dataset, load_from_disk
 
 # -----------------------------------------------------------
@@ -23,6 +18,7 @@ from KG_utils import (
     load_total_concepts,
     get_subgraph_for_message,
     concept2id,
+    id2concept,
 )
 
 # Initialize KG resources.
@@ -32,190 +28,69 @@ load_total_concepts("data/eg")
 
 
 # -----------------------------------------------------------
-# Define the KG-based graph information function.
+# Define a function to get KG-derived text using all concepts.
 # -----------------------------------------------------------
-def get_graph_info(text):
+def get_graph_text(text):
     """
-    Uses KG_utils to extract graph information for the given text.
-    - Computes a subgraph from the input text using BFS.
-    - Extracts concept IDs from the nodes in the subgraph.
-    - Pads or truncates the resulting list to a fixed length (here, 5).
+    Extracts graph information for the given text by:
+      - Computing a subgraph using BFS.
+      - Extracting all concept IDs available.
+      - Converting each concept ID into text using id2concept.
+      - Joining the concept texts with a space.
     
     Returns:
-        dict: A dictionary with key "concept_ids" containing a tensor of integers.
+        A string containing the KG information.
     """
     subgraph = get_subgraph_for_message(text)
     concept_ids = []
     for node in subgraph.nodes():
         if node in concept2id:
             concept_ids.append(concept2id[node])
-    fixed_length = 5
-    if len(concept_ids) < fixed_length:
-        concept_ids = concept_ids + [0] * (fixed_length - len(concept_ids))
-    else:
-        concept_ids = concept_ids[:fixed_length]
-    # Convert to tensor immediately so that the cached dataset contains tensors
-    return {"concept_ids": torch.tensor(concept_ids, dtype=torch.long)}
+    # Convert each concept ID to its corresponding text.
+    concepts = [id2concept.get(cid, "") for cid in concept_ids]
+    # Filter out any empty strings.
+    concepts = [c for c in concepts if c]
+    # Join using a space between items.
+    graph_text = " ".join(concepts)
+    return graph_text
 
 
 # -----------------------------------------------------------
-# Custom Graph Encoder
-# -----------------------------------------------------------
-class GraphEncoder(nn.Module):
-    def __init__(self, hidden_size, num_concepts):
-        """
-        A simple graph encoder that looks up embeddings for concept IDs.
-        
-        Args:
-            hidden_size (int): The embedding dimension.
-            num_concepts (int): The total number of concepts in your KG vocabulary.
-        """
-        super(GraphEncoder, self).__init__()
-        self.embedding = nn.Embedding(num_concepts, hidden_size)
-
-    def forward(self, concept_ids):
-        """
-        Args:
-            concept_ids: Tensor of shape (batch_size, num_concepts_per_example)
-        Returns:
-            pooled: A pooled representation of shape (batch_size, 1, hidden_size)
-            embedded: All concept embeddings of shape (batch_size, num_concepts_per_example, hidden_size)
-        """
-        # If not already a tensor, convert it (this should rarely happen if cached properly)
-        if not isinstance(concept_ids, torch.Tensor):
-            concept_ids = torch.tensor(concept_ids, dtype=torch.long, device=self.embedding.weight.device)
-        embedded = self.embedding(concept_ids)  # shape: (batch_size, num_concepts, hidden_size)
-        pooled = embedded.mean(dim=1, keepdim=True)  # simple mean pooling
-        return pooled, embedded
-
-
-# -----------------------------------------------------------
-# Custom Graph-Aware BART Model
-# -----------------------------------------------------------
-class BartGraphAwareForConditionalGeneration(BartForConditionalGeneration):
-    def __init__(self, config: BartConfig):
-        super(BartGraphAwareForConditionalGeneration, self).__init__(config)
-        # Use the actual size of the concept vocabulary.
-        self.graph_encoder = GraphEncoder(hidden_size=config.d_model, num_concepts=len(concept2id))
-        # An optional fusion layer to transform the pooled graph representation.
-        self.graph_fusion_layer = nn.Linear(config.d_model, config.d_model)
-        self.post_init()
-
-    def forward(
-        self,
-        input_ids=None,
-        attention_mask=None,
-        decoder_input_ids=None,
-        labels=None,
-        # New graph-related argument:
-        concept_ids=None,
-        **kwargs,
-    ):
-        # Remove unwanted kwargs that might be passed by Trainer.
-        kwargs.pop("num_items_in_batch", None)
-
-        if concept_ids is not None:
-            # Ensure concept_ids is a tensor and on the same device as input_ids.
-            if not isinstance(concept_ids, torch.Tensor):
-                concept_ids = torch.tensor(concept_ids, dtype=torch.long, device=input_ids.device)
-            pooled_graph, graph_hidden = self.graph_encoder(concept_ids)
-            # Transform the pooled representation.
-            graph_features = self.graph_fusion_layer(pooled_graph)  # shape: (batch_size, 1, d_model)
-        else:
-            graph_features = None
-
-        outputs = super().forward(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            decoder_input_ids=decoder_input_ids,
-            labels=labels,
-            **kwargs,
-        )
-        lm_loss = outputs.loss
-        lm_logits = outputs.logits
-
-        # TODO look into auxillary loss more
-        if (labels is not None) and (lm_loss is not None) and (graph_features is not None):
-            dummy_target = torch.zeros_like(graph_features)
-            aux_loss = ((graph_features - dummy_target) ** 2).mean()
-            total_loss = lm_loss + 0.1 * aux_loss
-        else:
-            total_loss = lm_loss  # When labels is None (e.g., during generation), lm_loss is None.
-
-        return Seq2SeqLMOutput(
-            loss=total_loss,
-            logits=lm_logits,
-            past_key_values=outputs.past_key_values,
-            decoder_hidden_states=outputs.decoder_hidden_states,
-            decoder_attentions=outputs.decoder_attentions,
-            cross_attentions=outputs.cross_attentions,
-            encoder_last_hidden_state=outputs.encoder_last_hidden_state,
-            encoder_hidden_states=outputs.encoder_hidden_states,
-            encoder_attentions=outputs.encoder_attentions,
-        )
-
-
-# -----------------------------------------------------------
-# Custom Data Collator for Graph Fields
-# -----------------------------------------------------------
-class GraphAwareDataCollator(DataCollatorForSeq2Seq):
-    def __call__(self, features):
-        # Use the parent collator to batch standard fields (e.g., input_ids, labels)
-        batch = super().__call__(features)
-        if "concept_ids" in features[0]:
-            concept_ids_list = []
-            for f in features:
-                concept_ids_value = f["concept_ids"]
-                # If already a tensor, simply move it to the same device as input_ids.
-                if isinstance(concept_ids_value, torch.Tensor):
-                    concept_ids_list.append(concept_ids_value.to(batch["input_ids"].device))
-                else:
-                    concept_ids_list.append(torch.tensor(concept_ids_value, dtype=torch.long, device=batch["input_ids"].device))
-            batch["concept_ids"] = torch.stack(concept_ids_list)
-        return batch
-
-
-# -----------------------------------------------------------
-# KG-Aware Trainer Creation Function (with dataset caching)
+# KG-Aware Trainer Creation Function (Prompt Injection Version)
 # -----------------------------------------------------------
 def get_KG_trainer(
     source_path: str,
     target_path: str,
     model_name: str = "facebook/bart-base",
     output_dir: str = "KG_finetuned_out",
-    max_len: int = 128,
+    max_len: int = 1024,
     epochs: int = 3,
-    train_batch_size: int = 60
+    train_batch_size: int = 60,
+    num_points: int = 200,  # New parameter for datapoints count.
 ):
-    """
-    Returns a Hugging Face Trainer instance for fine-tuning a graph-aware BART model.
-    This function first checks for a saved preprocessed dataset; if found, it loads it,
-    otherwise it preprocesses the raw data and saves the result for future uses.
-    """
     os.makedirs(output_dir, exist_ok=True)
     preprocessed_path = os.path.join(output_dir, "preprocessed_dataset")
 
     with open(source_path, "r", encoding="utf-8") as f_src, open(target_path, "r", encoding="utf-8") as f_tgt:
-        sources = [line.strip() for line in f_src]
-        targets = [line.strip() for line in f_tgt]
+        sources = [line.strip() for line in f_src][:num_points]
+        targets = [line.strip() for line in f_tgt][:num_points]
     raw_data = [{"source": s, "target": t} for s, t in zip(sources, targets)]
     
     if os.path.exists(preprocessed_path):
         print("Loading preprocessed dataset from disk...")
-        train_dataset = load_from_disk(preprocessed_path)
+        train_dataset = load_from_disk(preprocessed_path).select(range(num_points))
     else:
         print("Preprocessing dataset...")
         train_dataset = Dataset.from_list(raw_data)
         tokenizer = BartTokenizer.from_pretrained(model_name)
         
-        def preprocess_function(examples):
-            model_inputs = tokenizer(examples["source"], max_length=max_len, truncation=True)
+        def preprocess_function(example):
+            graph_text = get_graph_text(example["source"])
+            new_source = example["source"] + " <KG> " + graph_text if graph_text else example["source"]
+            model_inputs = tokenizer(new_source, max_length=max_len, truncation=True)
             with tokenizer.as_target_tokenizer():
-                labels = tokenizer(examples["target"], max_length=max_len, truncation=True)
+                labels = tokenizer(example["target"], max_length=max_len, truncation=True)
             model_inputs["labels"] = labels["input_ids"]
-            # Compute and immediately convert graph info to a tensor.
-            graph_info = get_graph_info(examples["source"])
-            model_inputs.update(graph_info)
             return model_inputs
         
         train_dataset = train_dataset.map(preprocess_function, batched=False, desc="Preprocessing data")
@@ -223,23 +98,25 @@ def get_KG_trainer(
         train_dataset.save_to_disk(preprocessed_path)
 
     tokenizer = BartTokenizer.from_pretrained(model_name)
-    model = BartGraphAwareForConditionalGeneration.from_pretrained(model_name)
-    
+    model = BartForConditionalGeneration.from_pretrained(model_name)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
-    
-    data_collator = GraphAwareDataCollator(tokenizer, model=model)
+    data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
     
     training_args = TrainingArguments(
         output_dir=output_dir,
         overwrite_output_dir=True,
         num_train_epochs=epochs,
         per_device_train_batch_size=train_batch_size,
-        save_steps=500,
-        save_total_limit=3,
-        logging_steps=100,
+        save_steps=5000,
+        save_total_limit=5,
+        logging_steps=500,
         eval_strategy="no",
+        fp16=True
     )
+
+    sample = train_dataset[0]
+    print("Decoded input:", tokenizer.decode(sample['input_ids']))
     
     trainer = Trainer(
         model=model,
@@ -249,3 +126,26 @@ def get_KG_trainer(
         data_collator=data_collator,
     )
     return trainer
+
+def generate_explanation_no_comp(model, tokenizer, device, sentence: str) -> list:
+    # Inject KG-derived text into the input sentence.
+    graph_text = get_graph_text(sentence)
+    if graph_text:
+        sentence = sentence + " <KG> " + graph_text
+
+    # Tokenize the modified input text
+    inputs = tokenizer(sentence, return_tensors="pt", max_length=256, truncation=True).to(device)
+    
+    # Generate output using beam search:
+    output_ids = model.generate(
+        **inputs,
+        max_length=60,
+        num_beams=3,
+        num_return_sequences=3,
+        early_stopping=True
+    )
+    
+    # Decode each of the generated token sequences
+    explanations = [tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
+    return explanations
+
