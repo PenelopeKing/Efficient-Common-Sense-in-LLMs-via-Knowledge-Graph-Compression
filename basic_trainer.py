@@ -150,7 +150,7 @@ def get_basic_trainer(
         save_total_limit=10,
         logging_steps=500,
         evaluation_strategy='no',
-        fp16=True,
+        fp16=False,
     )
     
     # ---------------------
