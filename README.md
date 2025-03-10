@@ -1,3 +1,4 @@
+
 # Efficient Common Sense in LLMs via Knowledge Graph Compression
 
 ## Introduction
@@ -6,23 +7,25 @@ This repository contains the PyTorch implementation of our Data Science Capstone
 
 The following data retrieval and preprocessing steps are based on the original implementations from the paper. 
 
+Note: There are some compatibility issues with certain MacOS systemes.
+Optimized for GPU use, a CUDA compatible GPU is highly recommended.
+
 ## Create an environment
 
 ```
-nltk==3.9.1
-spacy==3.8.4
-torch_scatter==2.1.2+${CUDA}
-psutil==5.9.0
-bert_score==0.3.13
 datasets==3.2.0
 networkx==3.2.1
+numpy==2.0.2
 pandas==2.2.3
+six==1.17.0
 torch==2.5.1+${CUDA}
+torch_geometric==2.6.1
 tqdm==4.67.1
-transformers==4.48.1
+transformers==4.49.0
+accelerate==1.4.0
 ```
 
--- For `torch-scatter`, `${CUDA}` should be replaced by either `cu101` `cu102` `cu110` or `cu111` depending on your PyTorch installation.
+-- For `torch`, `+${CUDA}` should be replaced by either `+cu101` `+cu102` `+cu110` or `+cu111` depending on your PyTorch installation. If you do not have a cuda compatible GPU simply delete `+${CUDA}`
 
 
 ## Preprocess the data
@@ -50,6 +53,9 @@ python filter_triple.py $DATA
 Replace **relation.txt** with our own relation.txt in this repo. It is modified from the original processing. 
 
 ## Training a Model
+
+Note: in data-params.json num_points is set to 100 for all models to only train on 100 points for convience of testing. Our papers results are based on 25k points for EG and 50k for anlg, however traing with that many points takes a significant amount of time.
+
 To train a model, use the following command:
 ```
 python run.py train <dataset> <model_type>
