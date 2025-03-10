@@ -1,0 +1,86 @@
+{
+    "datasets": {
+        "anlg": {
+            "data_path": "data/anlg",
+            "models": {
+                "basic": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "Final_Model_No_KG_anlg",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-60"
+                },
+                "kg_no_comp": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "Final_Model_No_Comp_Anlg",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-60"
+                },
+                "rgcn_comp": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "FINAL_Model_RGCN_Anlg",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 1,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-60"
+                },
+                "transformer_comp": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "FINAL_Model_Transformer_ANLG",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-60"
+                }
+            }
+        },
+        "comve": {
+            "data_path": "data/eg",
+            "models": {
+                "basic": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "Final_Model_No_KG_ComVE",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-60"
+                },
+                "kg_no_comp": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "Final_Model_No_Comp_ComVE",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-60"
+                },
+                "rgcn_comp": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "FINAL_Model_RGCN_ComVE",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-60"
+                },
+                "transformer_comp": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "FINAL_Model_Transformer_ComVE",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-60"
+                }
+            }
+        }
+    }
+}
