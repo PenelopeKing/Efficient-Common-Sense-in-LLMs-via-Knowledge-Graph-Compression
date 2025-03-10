@@ -299,7 +299,7 @@ class GraphAwareDataCollator(DataCollatorForSeq2Seq):
 # -----------------------------------------------------------
 # KG-Aware Trainer Creation Function (with Dataset Caching)
 # -----------------------------------------------------------
-def get_KG_RGCN_trainer(
+def get_KG_transformer_trainer(
     source_path: str,
     target_path: str,
     model_name: str = "facebook/bart-base",
