@@ -15,7 +15,7 @@ Optimized for GPU use, a CUDA compatible GPU is highly recommended.
 ```
 datasets==3.2.0
 networkx==3.2.1
-numpy==2.0.2
+numpy==1.26.4
 pandas==2.2.3
 six==1.17.0
 torch==2.5.1+${CUDA}
