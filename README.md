@@ -30,6 +30,8 @@ accelerate==1.4.0
 
 ## Preprocess the data
 
+Note: a fully preprocessed dataset is avaible at [this link](https://drive.google.com/file/d/1N3JnbIkAPVODfNFEyjH6sBap1Gc3pusO/view?usp=sharing) for convenience
+
 -- Extract English ConceptNet and build graph.
 
 ```bash
