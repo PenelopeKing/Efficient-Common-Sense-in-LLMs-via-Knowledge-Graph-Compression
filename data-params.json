@@ -1,0 +1,104 @@
+{
+    "datasets": {
+        "anlg": {
+            "data_path": "data/anlg",
+            "models": {
+                "basic": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "Final_Model_No_KG_anlg",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-10000"
+                },
+                "kg_no_comp": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "Final_Model_No_Comp_Anlg",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-10000"
+                },
+                "rgcn_comp": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "FINAL_Model_RGCN_Anlg",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-10000"
+                },
+                "transformer_comp": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "FINAL_Model_Transformer_ANLG_extra",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-10000"
+                },
+                "transformer_dropout": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "Final_Model_Transformer_large",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-10000"
+                }
+            }
+        },
+        "comve": {
+            "data_path": "data/eg",
+            "models": {
+                "basic": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "Final_Model_No_KG_ComVE",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-7680"
+                },
+                "kg_no_comp": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "Final_Model_No_Comp_ComVE",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-7680"
+                },
+                "rgcn_comp": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "FINAL_Model_RGCN_ComVE",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-7680"
+                },
+                "transformer_comp": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "FINAL_Model_Transformer_ComVE_extra",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-7680"
+                },
+                "transformer_dropout": {
+                    "model_name": "facebook/bart-base",
+                    "output_dir": "Final_Model_Transformer_large_ComVE",
+                    "max_len": 256,
+                    "epochs": 6,
+                    "train_batch_size": 10,
+                    "num_points": 100,
+                    "checkpoint": "checkpoint-7680"
+                }
+            }
+        }
+    }
+}
