@@ -423,7 +423,7 @@ def get_KG_transformer_trainer(
         overwrite_output_dir=True,
         num_train_epochs=epochs,
         per_device_train_batch_size=train_batch_size,
-        fp16=True,
+        fp16=False,
         save_steps=5000,
         save_total_limit=8,
         logging_steps=500,
