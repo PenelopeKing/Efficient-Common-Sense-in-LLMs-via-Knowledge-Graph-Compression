@@ -49,27 +49,51 @@ python filter_triple.py $DATA
 
 Replace **relation.txt** with our own relation.txt in this repo. It is modified from the original processing. 
 
-## Graph Encoding
-To get the R-GCN encodings, from the project root dir, run:
+## Training a Model
+To train a model, use the following command:
 ```
-python run.py encoding 
+python run.py train <dataset> <model_type>
 ```
-This applies a graph encoder to subgraphs, creating meaningful node embeddings. This step is essential for the models below that utilize the knowledge graph.
+* `<dataset>`: The dataset to use (`comve` or `anlg`).
+* `<model_type>`: The model type (one of the following):
+    - `basic`
+    - `kg_no_comp`
+    - `rgcn_comp`
+    - `transformer_comp`
 
-## Run Models
-```
-# To run our basic model (with no knowledge graph) run:
-python run.py no_KG
- 
-# To run our uncompressed full subgraph model run:
-python run.py full_KG
+### Example Commands: 
+* Train the basic model on ComVE:
+    ```
+    python run.py train comve basic
+    ```
+* Train the transformer_comp model on ANLG:
+    ```
+    python run.py train anlg transformer_comp
+    ```
 
-# To run our compressed subgraph model run:
-python run.py compressed_KG 
-```
-Note: Training may take some time, but models will be saved after the first run. Once trained, each model will allow you to input test sentences and and view the explanations. Ex. <code>input_sentence = "I can count the stars"</code> will result in: 'Stars cannot be counted.', 'Stars are too big to count.', 'Stars cannot be counted by humans.' with the uncompressed subgraph model. 
+Note: Training may take some time, but models will be saved after the first run. Once trained, we can evaluate the model. 
 
-Note #2: Our last model is still a work in progress. 
+## Evaluating a Model
+To evaluate a trained model, make sure to change the parameter in `data-params.json` to use the specific checkpoint model and run:
+```
+    python run.py evaluate <dataset> <model_type>
+```
+### Example Commands: 
+* Evaluate the basic model on ComVE:
+    ```
+    python run.py evaluate comve basic
+    ```
+* Evaluate the rgcn_comp model on ANLG:
+    ```
+    python run.py evaluate anlg rgcn_comp
+    ```
+
+## Model Outputs
+- Trained models are saved in their respective output directories as specified in `data-params.json`.
+
+- Evaluation metrics, including BLEU, ROUGE, distinct, and entropy scores, are stored in `results.json`.
+
+- Checkpoints can be loaded for further evaluation or fine-tuning.
 
 ## Reference
 
