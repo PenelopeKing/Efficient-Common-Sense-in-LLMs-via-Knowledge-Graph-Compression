@@ -1,7 +1,6 @@
 import json
 import pickle
 import networkx as nx
-import os
 
 # ----------------------------------------------------------------------
 # 1) Define file paths
@@ -32,11 +31,6 @@ allowed_nodes = set()
 def load_resources():
     global concept2id, id2concept, relation2id, id2relation
 
-    # Check if concept vocab file exists
-    if not os.path.exists(concept_vocab_path):
-        print("[DEBUG] load_resources: Concept vocabulary file missing:", concept_vocab_path)
-    else:
-        print("[DEBUG] load_resources: Loading concept vocabulary from:", concept_vocab_path)
     # Load concept vocabulary
     with open(concept_vocab_path, "r", encoding="utf8") as f:
         for line in f:
@@ -44,13 +38,7 @@ def load_resources():
             cid = len(concept2id)
             concept2id[concept] = cid
             id2concept[cid] = concept
-    print(f"[DEBUG] load_resources: Loaded {len(concept2id)} concepts.")
 
-    # Check if relation vocab file exists
-    if not os.path.exists(relation_vocab_path):
-        print("[DEBUG] load_resources: Relation vocabulary file missing:", relation_vocab_path)
-    else:
-        print("[DEBUG] load_resources: Loading relation vocabulary from:", relation_vocab_path)
     # Load relation vocabulary
     with open(relation_vocab_path, "r", encoding="utf8") as f:
         for line in f:
@@ -58,21 +46,16 @@ def load_resources():
             rid = len(relation2id)
             relation2id[rel] = rid
             id2relation[rid] = rel
-    print(f"[DEBUG] load_resources: Loaded {len(relation2id)} relations.")
 
 # ----------------------------------------------------------------------
 # 4) Load the ConceptNet graph
 # ----------------------------------------------------------------------
 def load_cpnet():
     global cpnet, cpnet_simple
-    if not os.path.exists(cpnet_path):
-        print("[DEBUG] load_cpnet: CPNet file missing:", cpnet_path)
-    else:
-        print("[DEBUG] load_cpnet: Found CPNet file:", cpnet_path)
-    print("[DEBUG] load_cpnet: Loading cpnet...")
+    print("Loading cpnet...")
     with open(cpnet_path, "rb") as f:
         cpnet = pickle.load(f)
-    print("[DEBUG] load_cpnet: Finished loading cpnet.")
+    print("Done")
 
     # Build an undirected version
     cpnet_simple = nx.Graph()
@@ -82,7 +65,6 @@ def load_cpnet():
             cpnet_simple[u][v]["weight"] += w
         else:
             cpnet_simple.add_edge(u, v, weight=w)
-    print(f"[DEBUG] load_cpnet: cpnet_simple has {cpnet_simple.number_of_nodes()} nodes and {cpnet_simple.number_of_edges()} edges.")
 
 # ----------------------------------------------------------------------
 # 5) Load "allowed" concepts from data
@@ -92,14 +74,9 @@ def load_cpnet():
 def load_total_concepts(data_path):
     global allowed_nodes  # we'll store them in this set
     total_concepts = []
-    print(f"[DEBUG] load_total_concepts: Loading allowed concepts from directory: {data_path}")
 
     for fname in ["train.concepts_nv.json", "val.concepts_nv.json"]:
         full_path = f"{data_path}/{fname}"
-        if not os.path.exists(full_path):
-            print(f"[DEBUG] load_total_concepts: File not found -> {full_path}")
-            continue
-        print(f"[DEBUG] load_total_concepts: Loading file: {full_path}")
         try:
             with open(full_path, "r", encoding="utf8") as f:
                 for line in f.readlines():
@@ -107,23 +84,20 @@ def load_total_concepts(data_path):
                     # 'qc' => question concepts, 'ac' => answer concepts
                     # The original code extends them together
                     total_concepts.extend(item['qc'] + item['ac'])
-        except Exception as e:
-            print(f"[DEBUG] load_total_concepts: Error reading {full_path}: {e}")
+        except FileNotFoundError:
+            print(f"Warning: file not found -> {full_path}")
 
     # Unique
     total_concepts = list(set(total_concepts))
-    print(f"[DEBUG] load_total_concepts: Found {len(total_concepts)} unique concepts in train/val files.")
 
     # Convert them to IDs, filter out unknowns
     valid_ids = []
     for cpt in total_concepts:
         if cpt in concept2id:
             valid_ids.append(concept2id[cpt])
-        else:
-            print(f"[DEBUG] load_total_concepts: Concept '{cpt}' not found in concept2id.")
 
     allowed_nodes = set(valid_ids)
-    print(f"[DEBUG] load_total_concepts: Loaded {len(allowed_nodes)} allowed concept IDs from train/val data.")
+    print(f"Loaded {len(allowed_nodes)} allowed concept IDs from train/val data.")
 
 # ----------------------------------------------------------------------
 # 6) BFS-based triple extraction with filtering
@@ -138,14 +112,12 @@ def get_triples_for_token_bfs(input_token, T=2, max_B=100):
     Restrict expansions to `allowed_nodes`.
     Return a list of (src_str, [rel_ids], tgt_str) edges.
     """
-    print(f"[DEBUG] get_triples_for_token_bfs: Starting BFS for token '{input_token}'")
+
     if input_token not in concept2id:
-        print(f"[DEBUG] get_triples_for_token_bfs: Token '{input_token}' not in concept2id.")
         return []
 
     start_id = concept2id[input_token]
     if start_id not in cpnet_simple:
-        print(f"[DEBUG] get_triples_for_token_bfs: Start ID {start_id} not in cpnet_simple.")
         return []
 
     # We'll track how many hops from the starting token
@@ -158,31 +130,48 @@ def get_triples_for_token_bfs(input_token, T=2, max_B=100):
 
     for hop_num in range(T):
         neighbor_freq = {}  # track frequency of each neighbor in this hop
-        print(f"[DEBUG] get_triples_for_token_bfs: Hop {hop_num + 1}, current frontier size: {len(frontier)}")
+
         for src_node in frontier:
+            # If src_node not in cpnet_simple adjacency, skip
             if src_node not in cpnet_simple:
                 continue
+
+            # Expand neighbors
             for nbr in cpnet_simple[src_node]:
+                # Must not be visited; must be in allowed nodes
                 if nbr not in visited and nbr in allowed_nodes:
+                    # Count how many times we see 'nbr'
                     neighbor_freq[nbr] = neighbor_freq.get(nbr, 0) + 1
+
+                    # Retrieve relations from the directed graph `cpnet`
                     if cpnet.has_edge(src_node, nbr):
                         rel_ids = []
                         for key, edge_data in cpnet[src_node][nbr].items():
                             if "rel" in edge_data:
                                 rel_ids.append(edge_data["rel"])
+
+                        # Store them
                         if nbr not in Ets:
                             Ets[nbr] = {src_node: rel_ids}
                         else:
                             Ets[nbr][src_node] = rel_ids
+
+        # Sort neighbors by frequency, keep top `max_B`
         sorted_nbrs = sorted(neighbor_freq.items(), key=lambda x: x[1], reverse=True)
         sorted_nbrs = sorted_nbrs[:max_B]
-        print(f"[DEBUG] get_triples_for_token_bfs: Hop {hop_num + 1} selected {len(sorted_nbrs)} neighbors.")
+
+        # Mark them visited, set BFS frontier for the next hop
         new_frontier = []
         for nid, _freq in sorted_nbrs:
             visited[nid] = hop_num + 1
             new_frontier.append(nid)
+
         frontier = new_frontier
 
+    # ---------------------------------------------
+    # Collect final edges from Ets
+    # Only keep edges if both ends are visited
+    # ---------------------------------------------
     final_triples = []
     for tgt_node, src_map in Ets.items():
         if tgt_node in visited:
@@ -191,7 +180,7 @@ def get_triples_for_token_bfs(input_token, T=2, max_B=100):
                     src_str = id2concept[src_node].replace("_", " ")
                     tgt_str = id2concept[tgt_node].replace("_", " ")
                     final_triples.append((src_str, rel_ids, tgt_str))
-    print(f"[DEBUG] get_triples_for_token_bfs: Found {len(final_triples)} triples for token '{input_token}'.")
+
     return final_triples
 
 def get_triples_for_message(message, T=2, max_B=100):
@@ -208,18 +197,21 @@ def get_triples_for_message(message, T=2, max_B=100):
         dict: A dictionary mapping each token (that exists in concept2id) to its list of triples.
               Each triple is of the form (src_str, [rel_ids], tgt_str).
     """
+    # Tokenize the message. Here, we simply split on whitespace and lower the case.
+    # You can replace this with a more advanced tokenizer if needed.
     tokens = message.lower().split()
-    print(f"[DEBUG] get_triples_for_message: Processing message with {len(tokens)} tokens.")
+    
     message_triples = {}
+    
     for token in tokens:
         if token in concept2id:
+            # Use your existing function to get BFS triples for this token.
             triples = get_triples_for_token_bfs(token, T=T, max_B=max_B)
             if triples:
                 message_triples[token] = triples
-            else:
-                print(f"[DEBUG] get_triples_for_message: No triples found for token '{token}'.")
-        else:
-            print(f"[DEBUG] get_triples_for_message: Token '{token}' not in concept2id, skipping.")
+        #else:
+            #print(f"Warning: Token '{token}' not found in the concept vocabulary. Skipping.")
+    
     return message_triples
 
 def get_subgraph_for_message(message, T=2, max_B=100):
@@ -238,19 +230,26 @@ def get_subgraph_for_message(message, T=2, max_B=100):
         networkx.Graph: A subgraph containing the extracted nodes and edges.
                         Each edge has an attribute 'rel_ids' (a list of relation IDs).
     """
-    print(f"[DEBUG] get_subgraph_for_message: Building subgraph for message: {message[:50]}...")
     message_triples = get_triples_for_message(message, T, max_B)
     
+    # Create an empty undirected graph for the subgraph
     subgraph = nx.Graph()
+    
+    # Iterate over all tokens and their associated triples, adding nodes and edges.
     for token, triples in message_triples.items():
         for src, rel_ids, tgt in triples:
+            # Add the nodes (this is idempotent if they already exist)
             subgraph.add_node(src)
             subgraph.add_node(tgt)
+            
+            # If the edge already exists, merge the relation information.
             if subgraph.has_edge(src, tgt):
                 existing_rel_ids = subgraph[src][tgt].get("rel_ids", [])
+                # Merge without duplicates
                 merged = list(set(existing_rel_ids + rel_ids))
                 subgraph[src][tgt]["rel_ids"] = merged
             else:
                 subgraph.add_edge(src, tgt, rel_ids=rel_ids)
-    print(f"[DEBUG] get_subgraph_for_message: Subgraph built with {subgraph.number_of_nodes()} nodes and {subgraph.number_of_edges()} edges.")
+    
     return subgraph
+

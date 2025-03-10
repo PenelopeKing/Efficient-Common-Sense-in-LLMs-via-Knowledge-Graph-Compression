@@ -10,7 +10,6 @@ from corpus_diversity import eval_entropy_distinct
 import time
 from tqdm import tqdm
 
-from evaluator import evaluate_model
 import networkx as nx
 import pickle
 from torch_geometric.data import Data
